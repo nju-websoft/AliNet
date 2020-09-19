@@ -34,7 +34,12 @@ To run AliNet on DBP15K, use the following script:
 bash run_dbp15k.sh
 ```
 
-To run AliNet (w/o relation loss and augmentation) on DBP15K ZH-EN, use the following script:
+To run AliNet (w/o iterative neighborhood augmentation) on DBP15K ZH-EN, use the following script:
+```
+python3 main.py --input ../data/DBP15K/zh_en/mtranse/0_3/ --sim_th 0.0
+```
+
+To run AliNet (w/o relation loss and neighborhood augmentation) on DBP15K ZH-EN, use the following script:
 ```
 python3 main.py --input ../data/DBP15K/zh_en/mtranse/0_3/ --rel_param 0.0 --sim_th 0.0
 ```
