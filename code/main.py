@@ -16,9 +16,11 @@ parser.add_argument('--activation', type=str, default="tanh")
 parser.add_argument('--neg_multi', type=int, default=10)  # for negative sampling
 parser.add_argument('--neg_margin', type=float, default=1.5)  # margin value for negative loss
 parser.add_argument('--neg_param', type=float, default=0.1)  # weight for negative loss
+parser.add_argument('--rel_param', type=float, default=0.01)  # weight for relation loss
 parser.add_argument('--truncated_epsilon', type=float, default=0.98)  # epsilon for truncated negative sampling
 
 parser.add_argument('--batch_size', type=int, default=4500)
+parser.add_argument('--min_rel_win', type=int, default=15)
 parser.add_argument('--max_epoch', type=int, default=1000)
 
 parser.add_argument('--is_save', type=bool, default=False)
@@ -47,11 +49,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     print(args)
     is_two = True
-    adj, kg1, kg2, sup_ent1, sup_ent2, ref_ent1, ref_ent2, tri_num, ent_num, rel_num, rel_id_mapping = \
+    adj, kg1, kg2, sup_ent1, sup_ent2, ref_ent1, ref_ent2, tri_num, ent_num, rel_num, rel_id_mapping, rel_ht_dict = \
         gcn_load_data(args.input, is_two=is_two)
     linked_entities = set(sup_ent1 + sup_ent2 + ref_ent1 + ref_ent2)
     gcn_model = get_model(args.embedding_module)(adj, kg1, kg2, sup_ent1, sup_ent2, ref_ent1, ref_ent2,
-                                                 tri_num, ent_num, rel_num, args)
+                                                 tri_num, ent_num, rel_num, rel_ht_dict, args)
     gcn_model.train(args.batch_size, max_epochs=args.max_epoch, start_valid=args.start_valid, eval_freq=args.eval_freq)
     gcn_model.test()
-

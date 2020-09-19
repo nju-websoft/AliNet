@@ -125,8 +125,6 @@ class GraphConvolution(keras.layers.Layer):
         # dropout if training
         if training and self.dropout_rate > 0.0:
             inputs = dropout(inputs, self.dropout_rate, self.num_features_nonzero, self.is_sparse_inputs)
-        if not training:
-            print("gcn not training now")
         # convolve
         hidden_vectors = list()
         for i in range(len(self.adjs)):

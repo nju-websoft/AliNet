@@ -16,7 +16,8 @@ from align.sample import generate_neighbours
 
 
 class AliNet:
-    def __init__(self, adj, kg1, kg2, sup_ent1, sup_ent2, ref_ent1, ref_ent2, tri_num, ent_num, rel_num, args):
+    def __init__(self, adj, kg1, kg2, sup_ent1, sup_ent2, ref_ent1, ref_ent2, tri_num, ent_num, rel_num,
+                 rel_ht_dict, args):
         self.one_hop_layers = None
         self.two_hop_layers = None
         self.layers_outputs = None
@@ -32,9 +33,15 @@ class AliNet:
         self.ent_num = ent_num
         self.rel_num = rel_num
 
+        self.rel_ht_dict = rel_ht_dict
+        self.rel_win_size = args.batch_size // len(rel_ht_dict)
+        if self.rel_win_size <= 1:
+            self.rel_win_size = args.min_rel_win
+
         self.neg_multi = args.neg_multi
         self.neg_margin = args.neg_margin
         self.neg_param = args.neg_param
+        self.rel_param = args.rel_param
         self.truncated_epsilon = args.truncated_epsilon
 
         self.layer_dims = args.layer_dims
@@ -140,6 +147,22 @@ class AliNet:
 
         return pos_loss + self.neg_param * neg_loss
 
+    def compute_rel_loss(self, hs, ts):
+        embeds_list = list()
+        for output_embeds in self.output_embeds_list + [self.input_embeds]:
+            output_embeds = tf.nn.l2_normalize(output_embeds, 1)
+            embeds_list.append(output_embeds)
+        output_embeds = tf.concat(embeds_list, axis=1)
+        output_embeds = tf.nn.l2_normalize(output_embeds, 1)
+        h_embeds = tf.nn.embedding_lookup(output_embeds, tf.cast(hs, tf.int32))
+        t_embeds = tf.nn.embedding_lookup(output_embeds, tf.cast(ts, tf.int32))
+        r_temp_embeds = tf.reshape(h_embeds - t_embeds, [-1, self.rel_win_size, output_embeds.shape[-1]])
+        r_temp_embeds = tf.reduce_mean(r_temp_embeds, axis=1, keepdims=True)
+        r_embeds = tf.tile(r_temp_embeds, [1, self.rel_win_size, 1])
+        r_embeds = tf.reshape(r_embeds, [-1, output_embeds.shape[-1]])
+        r_embeds = tf.nn.l2_normalize(r_embeds, 1)
+        return tf.reduce_sum(tf.reduce_sum(tf.square(h_embeds - t_embeds - r_embeds), 1)) * self.rel_param
+
     @staticmethod
     def early_stop(flag1, flag2, flag):
         if flag < flag2 < flag1:
@@ -191,7 +214,7 @@ class AliNet:
     def valid(self):
         embeds_list1, embeds_list2 = list(), list()
         input_embeds, output_embeds_list = self.eval_embeds()
-        for output_embeds in output_embeds_list:
+        for output_embeds in [input_embeds] + output_embeds_list:
             output_embeds = tf.nn.l2_normalize(output_embeds, 1)
             embeds1 = tf.nn.embedding_lookup(output_embeds, self.ref_ent1)
             embeds2 = tf.nn.embedding_lookup(output_embeds, self.ref_ent2)
@@ -220,16 +243,6 @@ class AliNet:
             embeds2 = embeds2.numpy()
             embeds_list1.append(embeds1)
             embeds_list2.append(embeds2)
-        for i in range(len(embeds_list1)):
-            print("test embeddings of layer {}:".format(i))
-            embeds1 = embeds_list1[i]
-            embeds2 = embeds_list2[i]
-            greedy_alignment(embeds1, embeds2, self.hits_k, self.eval_threads_num,
-                             self.eval_metric, False, 0, True)
-            greedy_alignment(embeds1, embeds2,
-                             self.hits_k, self.eval_threads_num,
-                             self.eval_metric, False, self.eval_csls, True)
-        print("test all embeddings:")
         embeds1 = np.concatenate(embeds_list1, axis=1)
         embeds2 = np.concatenate(embeds_list2, axis=1)
         alignment_rest, _, _, _ = greedy_alignment(embeds1, embeds2, self.hits_k, self.eval_threads_num,
@@ -263,6 +276,16 @@ class AliNet:
         neg_links = np.array(list(neg_links))
         return pos_links, neg_links
 
+    def generate_rel_batch(self):
+        hs, rs, ts = list(), list(), list()
+        for r, hts in self.rel_ht_dict.items():
+            hts_batch = [random.choice(hts) for _ in range(self.rel_win_size)]
+            for h, t in hts_batch:
+                hs.append(h)
+                ts.append(t)
+                rs.append(r)
+        return hs, rs, ts
+
     def find_neighbors(self):
         if self.truncated_epsilon <= 0.0:
             return None, None
@@ -283,7 +306,7 @@ class AliNet:
         print('finding neighbors for sampling costs time: {:.4f}s'.format(time.time() - start))
         return neighbors1, neighbors2
 
-    def train(self, batch_size, max_epochs=1000, start_valid=300, eval_freq=10):
+    def train(self, batch_size, max_epochs=1000, start_valid=10, eval_freq=10):
         flag1 = 0
         flag2 = 0
         steps = len(self.sup_ent2) // batch_size
@@ -301,18 +324,21 @@ class AliNet:
                     self.input_embeds, self.output_embeds_list = self.model((self.pos_link_batch, self.neg_link_batch),
                                                                             training=True)
                     batch_loss = self.compute_loss(self.pos_link_batch, self.neg_link_batch)
+                    if self.rel_param > 0.0:
+                        hs, _, ts = self.generate_rel_batch()
+                        rel_loss = self.compute_rel_loss(hs, ts)
+                        batch_loss += rel_loss
                     grads = tape.gradient(batch_loss, self.model.trainable_variables)
                     self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
                     epoch_loss += batch_loss
             print('epoch {}, loss: {:.4f}, cost time: {:.4f}s'.format(epoch, epoch_loss, time.time() - start))
-            if epoch % eval_freq == 0:
+            if epoch % eval_freq == 0 and epoch >= start_valid:
                 flag = self.valid()
                 flag1, flag2, is_stop = self.early_stop(flag1, flag2, flag)
-                if is_stop and epoch >= start_valid:
-                    print("\n == early stop == \n")
+                if is_stop:
+                    print("\n == training stop == \n")
                     break
-                if epoch >= start_valid:
-                    neighbors1, neighbors2 = self.find_neighbors()
-                # if epoch >= self.start_augment * eval_freq:
-                #     if self.sim_th > 0.0:
-                #         self.augment_neighborhood()
+                neighbors1, neighbors2 = self.find_neighbors()
+                if epoch >= self.start_augment * eval_freq:
+                    if self.sim_th > 0.0:
+                        self.augment_neighborhood()

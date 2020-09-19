@@ -49,8 +49,6 @@ class HighwayLayer(tf.keras.layers.Layer):
         gate = tf.keras.activations.tanh(gate)
         if training and self.dropout_rate > 0.0:
             gate = tf.nn.dropout(gate, self.dropout_rate)
-        if not training:
-            print("highway gate not training now")
         gate = tf.keras.activations.relu(gate)
         output = tf.add(tf.multiply(input2, 1 - gate), tf.multiply(input1, gate))
         return self.activation(output)
@@ -135,8 +133,6 @@ class AliNetGraphAttentionLayer(keras.layers.Layer):
         if training and self.dropout_rate > 0.0:
             con_sa_1 = tf.nn.dropout(con_sa_1, self.dropout_rate)
             con_sa_2 = tf.nn.dropout(con_sa_2, self.dropout_rate)
-        if not training:
-            print("alinet gat not training now")
         con_sa_1 = tf.cast(self.adjs[0], dtype=tf.float32) * con_sa_1
         con_sa_2 = tf.cast(self.adjs[0], dtype=tf.float32) * tf.transpose(con_sa_2, [1, 0])
         weights = tf.sparse.add(con_sa_1, con_sa_2)

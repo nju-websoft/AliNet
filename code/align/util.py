@@ -3,6 +3,7 @@ import os
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg.eigen.arpack import eigsh
+import pickle
 from .input import read_dbp15k_input
 from .preprocess import enhance_triples, generate_3hop_triples, generate_2hop_triples, \
     remove_unlinked_triples
@@ -272,60 +273,56 @@ def get_weighted_adj(e, triples):
     return sp.coo_matrix((data, (row, col)), shape=(e, e))
 
 
+def generate_rel_ht(triples):
+    rel_ht_dict = dict()
+    for h, r, t in triples:
+        hts = rel_ht_dict.get(r, list())
+        hts.append((h, t))
+        rel_ht_dict[r] = hts
+    return rel_ht_dict
+
+
 def gcn_load_data(input_folder, is_two=False, is_three=False, is_four=False):
     kg1, kg2, sup_ent1, sup_ent2, ref_ent1, ref_ent2, total_tri_num, total_e_num, total_r_num, rel_id_mapping = \
         read_dbp15k_input(input_folder)
     linked_ents = set(sup_ent1 + sup_ent2 + ref_ent1 + ref_ent2)
     enhanced_triples1, enhanced_triples2 = enhance_triples(kg1, kg2, sup_ent1, sup_ent2)
-    triples = remove_unlinked_triples(kg1.triple_list + kg2.triple_list +
-                                      list(enhanced_triples1) + list(enhanced_triples2), linked_ents)
-    # enhanced_triples1 = generate_2hop_triples(kg1, linked_ents=linked_ents)
-    # enhanced_triples2 = generate_2hop_triples(kg2, linked_ents=linked_ents)
-    # triples = set(triples) | enhanced_triples1 | enhanced_triples2
-    one_adj, _ = no_weighted_adj(total_e_num, triples, is_two_adj=False)
-    adj = [one_adj]
-    # enhanced_triples11 = generate_2hop_triples(kg1)
-    # enhanced_triples21 = generate_2hop_triples(kg2)
-    # triples = list(enhanced_triples1) + list(enhanced_triples2) + list(enhanced_triples11) + list(enhanced_triples21)
-    # two_adj, _ = no_weighted_adj(total_e_num, triples, is_two_adj=False)
-    # adj = [one_adj, two_adj]
+    ori_triples = kg1.triple_list + kg2.triple_list
+    triples = remove_unlinked_triples(ori_triples + list(enhanced_triples1) + list(enhanced_triples2), linked_ents)
+    rel_ht_dict = generate_rel_ht(triples)
 
-    # useful_triples1 = enhanced_triples1 - kg1.triples
-    # useful_triples2 = enhanced_triples2 - kg2.triples
-    # useful_edges = set()
-    # for h, r, t in list(useful_triples1) + list(useful_triples2):
-    #     useful_edges.add((h, t))
-    # print("useful_edges", len(useful_edges))
-    # enhanced_triples1 = generate_2steps_path(kg1.triples)
-    # enhanced_triples2 = generate_2steps_path(kg2.triples)
-    # n = 0
-    # for h, r, t in list(enhanced_triples1) + list(enhanced_triples2):
-    #     if (h, t) in useful_edges:
-    #         n += 1
-    # print("useful 2 hop edges", n)
-    two_hop_triples1, two_hop_triples2 = None, None
-    three_hop_triples1, three_hop_triples2 = None, None
-    if is_two:
-        two_hop_triples1 = generate_2hop_triples(kg1, linked_ents=linked_ents)
-        two_hop_triples2 = generate_2hop_triples(kg2, linked_ents=linked_ents)
-        triples = two_hop_triples1 | two_hop_triples2
-        # triples = remove_unlinked_triples(triples, linked_ents)
-        two_adj, _ = no_weighted_adj(total_e_num, triples, is_two_adj=False)
-        adj.append(two_adj)
-    if is_three:
-        three_hop_triples1 = generate_3hop_triples(kg1, two_hop_triples1, linked_ents=linked_ents)
-        three_hop_triples2 = generate_3hop_triples(kg2, two_hop_triples2, linked_ents=linked_ents)
-        triples = three_hop_triples1 | three_hop_triples2
-        three_adj, _ = no_weighted_adj(total_e_num, triples, is_two_adj=False)
-        adj.append(three_adj)
-    if is_four:
-        four_hop_triples1 = generate_3hop_triples(kg1, three_hop_triples1, linked_ents=linked_ents)
-        four_hop_triples2 = generate_3hop_triples(kg2, three_hop_triples2, linked_ents=linked_ents)
-        triples = four_hop_triples1 | four_hop_triples2
-        four_adj, _ = no_weighted_adj(total_e_num, triples, is_two_adj=False)
-        adj.append(four_adj)
+    saved_data_path = input_folder + 'alinet_saved_data.pkl'
+    if os.path.exists(saved_data_path):
+        print('load saved adj data from', saved_data_path)
+        adj = pickle.load(open(saved_data_path, 'rb'))
+    else:
+        one_adj, _ = no_weighted_adj(total_e_num, triples, is_two_adj=False)
+        adj = [one_adj]
+        two_hop_triples1, two_hop_triples2 = None, None
+        three_hop_triples1, three_hop_triples2 = None, None
+        if is_two:
+            two_hop_triples1 = generate_2hop_triples(kg1, linked_ents=linked_ents)
+            two_hop_triples2 = generate_2hop_triples(kg2, linked_ents=linked_ents)
+            triples = two_hop_triples1 | two_hop_triples2
+            two_adj, _ = no_weighted_adj(total_e_num, triples, is_two_adj=False)
+            adj.append(two_adj)
+        if is_three:
+            three_hop_triples1 = generate_3hop_triples(kg1, two_hop_triples1, linked_ents=linked_ents)
+            three_hop_triples2 = generate_3hop_triples(kg2, two_hop_triples2, linked_ents=linked_ents)
+            triples = three_hop_triples1 | three_hop_triples2
+            three_adj, _ = no_weighted_adj(total_e_num, triples, is_two_adj=False)
+            adj.append(three_adj)
+        if is_four:
+            four_hop_triples1 = generate_3hop_triples(kg1, three_hop_triples1, linked_ents=linked_ents)
+            four_hop_triples2 = generate_3hop_triples(kg2, three_hop_triples2, linked_ents=linked_ents)
+            triples = four_hop_triples1 | four_hop_triples2
+            four_adj, _ = no_weighted_adj(total_e_num, triples, is_two_adj=False)
+            adj.append(four_adj)
+        print('save adj data to', saved_data_path)
+        pickle.dump(adj, open(saved_data_path, 'wb'))
+        
     return adj, kg1, kg2, sup_ent1, sup_ent2, ref_ent1, ref_ent2, total_tri_num, \
-           total_e_num, total_r_num, rel_id_mapping
+           total_e_num, total_r_num, rel_id_mapping, rel_ht_dict
 
 
 def diag_adj(adj):

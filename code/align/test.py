@@ -38,7 +38,6 @@ def greedy_alignment(embed1, embed2, top_k, nums_threads, metric, normalize, csl
     """
     t = time.time()
     sim_mat = sim(embed1, embed2, metric=metric, normalize=normalize, csls_k=csls_k)
-    # print("max/min/average value in sim mat", np.max(sim_mat),  np.min(sim_mat), np.average(sim_mat))
     num = sim_mat.shape[0]
     if nums_threads > 1:
         hits = [0] * len(top_k)
@@ -67,14 +66,14 @@ def greedy_alignment(embed1, embed2, top_k, nums_threads, metric, normalize, csl
     cost = time.time() - t
     if accurate:
         if csls_k > 0:
-            print("accurate results with csls: csls={}, hits@{} = {}%, mr = {:.3f}, mrr = {:.6f}, time = {:.3f} s ".
-                  format(csls_k, top_k, hits, mr, mrr, cost))
+            print("accurate results with csls, hits@{} = {}%, mr = {:.3f}, mrr = {:.6f}, time = {:.3f} s ".
+                  format(top_k, hits, mr, mrr, cost))
         else:
             print("accurate results: hits@{} = {}%, mr = {:.3f}, mrr = {:.6f}, time = {:.3f} s ".
                   format(top_k, hits, mr, mrr, cost))
     else:
         if csls_k > 0:
-            print("quick results with csls: csls={}, hits@{} = {}%, time = {:.3f} s ".format(csls_k, top_k, hits, cost))
+            print("quick results with csls, hits@{} = {}%, time = {:.3f} s ".format(top_k, hits, cost))
         else:
             print("quick results: hits@{} = {}%, time = {:.3f} s ".format(top_k, hits, cost))
     hits1 = hits[0]
