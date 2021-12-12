@@ -1,5 +1,6 @@
 import random
 import time
+import gc
 
 import tensorflow as tf
 import numpy as np
@@ -43,6 +44,7 @@ class AliNet:
         self.neg_param = args.neg_param
         self.rel_param = args.rel_param
         self.truncated_epsilon = args.truncated_epsilon
+        self.learning_rate = args.learning_rate
 
         self.layer_dims = args.layer_dims
         self.layer_num = len(args.layer_dims) - 1
@@ -73,9 +75,15 @@ class AliNet:
         weight = np.ones((len(self.sup_ent1), 1), dtype=np.float)
         self.sup_links = np.hstack((sup_ent1, sup_ent2, weight))
 
+        enhanced_triples1, enhanced_triples2 = enhance_triples(self.kg1, self.kg2, self.sup_ent1, self.sup_ent2)
+        triples = self.kg1.triple_list + self.kg2.triple_list + list(enhanced_triples1) + list(enhanced_triples2)
+        triples = remove_unlinked_triples(triples, self.linked_ents)
+        one_adj, _ = no_weighted_adj(self.ent_num, triples, is_two_adj=False)
+        self.ori_adj = [one_adj]
+
         self.model = self.define_model()
         self.input_embeds, self.output_embeds_list = None, None
-        self.optimizer = tf.keras.optimizers.Adam()
+        self.optimizer = tf.keras.optimizers.Adam(lr=self.learning_rate)
 
     def define_model(self):
         print('Getting AliNet model...')
@@ -165,18 +173,22 @@ class AliNet:
 
     @staticmethod
     def early_stop(flag1, flag2, flag):
+        if flag <= flag2:
+            return flag2, flag, True
         if flag < flag2 < flag1:
             return flag2, flag, True
         else:
             return flag2, flag, False
 
     def eval_embeds(self):
+        self.reset_neighborhood()
         input_embeds, output_embeds = self.model((self.pos_link_batch, self.neg_link_batch), training=False)
         return input_embeds, output_embeds
 
     def augment(self):
-        embeds1 = tf.nn.embedding_lookup(self.output_embeds_list[-1], self.ref_ent1)
-        embeds2 = tf.nn.embedding_lookup(self.output_embeds_list[-1], self.ref_ent2)
+        _, output_embeds_list = self.eval_embeds()
+        embeds1 = tf.nn.embedding_lookup(output_embeds_list[-1], self.ref_ent1)
+        embeds2 = tf.nn.embedding_lookup(output_embeds_list[-1], self.ref_ent2)
         embeds1 = tf.nn.l2_normalize(embeds1, 1)
         embeds2 = tf.nn.l2_normalize(embeds2, 1)
         embeds1 = embeds1.numpy()
@@ -210,6 +222,12 @@ class AliNet:
         adj = [one_adj]
         for layer in self.one_hop_layers:
             layer.update_adj(adj)
+        del sim_mat
+        gc.collect()
+
+    def reset_neighborhood(self):
+        for layer in self.one_hop_layers:
+            layer.update_adj(self.ori_adj)
 
     def valid(self):
         embeds_list1, embeds_list2 = list(), list()
@@ -304,6 +322,8 @@ class AliNet:
         neighbors1 = generate_neighbours(embeds1, ents1, embeds2, ents2, num, threads_num=self.eval_threads_num)
         neighbors2 = generate_neighbours(embeds2, ents2, embeds1, ents1, num, threads_num=self.eval_threads_num)
         print('finding neighbors for sampling costs time: {:.4f}s'.format(time.time() - start))
+        del embeds1, embeds2
+        gc.collect()
         return neighbors1, neighbors2
 
     def train(self, batch_size, max_epochs=1000, start_valid=10, eval_freq=10):

@@ -17,7 +17,8 @@ parser.add_argument('--neg_multi', type=int, default=10)  # for negative samplin
 parser.add_argument('--neg_margin', type=float, default=1.5)  # margin value for negative loss
 parser.add_argument('--neg_param', type=float, default=0.1)  # weight for negative loss
 parser.add_argument('--rel_param', type=float, default=0.01)  # weight for relation loss
-parser.add_argument('--truncated_epsilon', type=float, default=0.98)  # epsilon for truncated negative sampling
+parser.add_argument('--truncated_epsilon', type=float, default=0.9)  # epsilon for truncated negative sampling
+parser.add_argument('--learning_rate', type=float, default=0.001)
 
 parser.add_argument('--batch_size', type=int, default=4500)
 parser.add_argument('--min_rel_win', type=int, default=15)
@@ -31,7 +32,7 @@ parser.add_argument('--eval_metric', type=str, default='inner')
 parser.add_argument('--hits_k', type=list, default=[1, 5, 10, 50])
 parser.add_argument('--eval_threads_num', type=int, default=10)
 parser.add_argument('--eval_normalize', type=bool, default=True)
-parser.add_argument('--eval_csls', type=int, default=2)
+parser.add_argument('--eval_csls', type=int, default=10)
 parser.add_argument('--eval_freq', type=int, default=5)
 parser.add_argument('--adj_number', type=int, default=1)
 parser.add_argument('--sim_th', type=float, default=0.5)

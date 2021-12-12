@@ -22,7 +22,7 @@ fi
 neg_multi=(10)
 neg_margin=(1.5)
 neg_param=(0.1)
-epsilon=(0.98)
+epsilon=(0.9)
 batch_size=(4500)
 sim_th=(0.5)
 

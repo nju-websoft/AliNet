@@ -49,4 +49,5 @@ def find_neighbours(frags, sub_embed1, entity_list2, embed2, k):
         neighbors_index = sort_index[0:k]
         neighbors = entity_list2[neighbors_index].tolist()
         dic[frags[i]] = neighbors
+    del sim_mat
     return dic
